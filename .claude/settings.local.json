@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter analyze *)",
+      "Bash(adb logcat *)",
+      "Bash(adb devices *)",
+      "Bash(adb -s emulator-5554 logcat -d -t 200 -s flutter:V OverlayService:V OverLay:V AndroidRuntime:E System.err:W)",
+      "Bash(grep -v \"^$\")",
+      "Bash(adb -s emulator-5554 logcat -d -t 300])",
+      "Bash(adb -s emulator-5554 logcat -d)",
+      "Bash(flutter clean *)",
+      "Bash(flutter build *)",
+      "Bash(adb *)",
+      "Bash(flutter pub *)"
+    ]
+  }
+}
