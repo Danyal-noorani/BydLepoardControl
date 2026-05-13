@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 1.0.0
 
 environment:
   sdk: ^3.11.0
@@ -38,14 +38,16 @@ dependencies:
   # Pure Dart ADB client — QR pairing + verifying the live connection
   # Docs: https://pub.dev/packages/flutter_adb
   flutter_adb: ^1.0.0
-  multicast_dns: ^0.3.3
+
   path_provider: ^2.1.0
- 
+
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
-  device_apps: ^2.1.0
+  flutter_device_apps:  0.7.0
+
+  flutter_secure_storage: ^10.2.0
 
 dev_dependencies:
   flutter_test:

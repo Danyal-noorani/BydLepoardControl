@@ -9,9 +9,16 @@ import 'overlay_widget.dart';
 void overlayMain() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(
-    const Directionality(
+    Directionality(
       textDirection: TextDirection.ltr,
-      child: Material(color: Colors.transparent, child: OverlayWidget()),
+      child: MaterialApp(
+        theme: ThemeData.dark(),
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: OverlayWidget(),
+        ),
+      ),
     ),
   );
 }
@@ -24,7 +31,8 @@ void main() async {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
   @override
-  Widget build(BuildContext context) => const MaterialApp(home: HomeScreen());
+  Widget build(BuildContext context) =>
+      MaterialApp(home: HomeScreen(), theme: ThemeData.dark());
 }
 
 class HomeScreen extends StatefulWidget {
@@ -36,21 +44,19 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   bool _overlayActive = false;
   final _portController = TextEditingController();
+  final adb = SelfAdbService();
   int _selectedDisplay = 0;
   int _currentDensity = 0;
-  SelfAdbService? adb;
+  List<int> _displayIds = const [];
   // int zoom =
   @override
   void initState() {
     super.initState();
-    adb = SelfAdbService.instance;
-    adb!
-        .run("wm density | grep 'Physical' | awk '{print \$3 }'")
-        .then(
-          (value) => setState(() {
-            _currentDensity = int.parse(value);
-          }),
-        );
+    adb.getDisplays().then(
+      (value) => setState(() {
+        _displayIds = value;
+      }),
+    );
   }
 
   @override
@@ -66,8 +72,8 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     if (_overlayActive) {
-      await FlutterOverlayWindow.closeOverlay();
       setState(() => _overlayActive = false);
+      await FlutterOverlayWindow.closeOverlay();
     } else {
       await FlutterOverlayWindow.showOverlay(
         enableDrag: true,
@@ -93,15 +99,26 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Center(
+              child: Text("ADB IP: ${adb.wifiIp}", textAlign: TextAlign.center),
+            ),
+            const SizedBox(height: 25),
+            Center(
+              child: Text(
+                "ADB Error: ${adb.adbError}",
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 25),
             Center(child: Text("Change Display Zoom")),
             Center(
               child: DropdownButton<int>(
                 value: _selectedDisplay,
-                items: [0, 2, 3, 4, 5]
+                items: _displayIds
                     .map((e) => DropdownMenuItem(value: e, child: Text('$e')))
                     .toList(),
                 onChanged: (val) async {
-                  final out = await adb!.run(
+                  final out = await adb.run(
                     "wm density | grep 'Physical' | awk '{print \$3 }'",
                   );
                   log(out);
@@ -115,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 12),
             Center(
               child: Text(
-                "Cuurent Density: $_currentDensity",
+                "Current Density: $_currentDensity",
                 textAlign: TextAlign.center,
               ),
             ),
@@ -127,9 +144,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   ElevatedButton(
                     onPressed: () async {
-                      if (adb == null) return;
                       setState(() => _currentDensity += 15);
-                      adb!.run(
+                      adb.run(
                         "wm density $_currentDensity -d $_selectedDisplay ",
                       );
                     },
@@ -138,9 +154,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(width: 8),
                   ElevatedButton(
                     onPressed: () {
-                      if (adb == null) return;
                       setState(() => _currentDensity -= 15);
-                      adb!.run(
+                      adb.run(
                         "wm density $_currentDensity -d $_selectedDisplay ",
                       );
                     },
@@ -152,14 +167,13 @@ class _HomeScreenState extends State<HomeScreen> {
             Center(
               child: ElevatedButton(
                 onPressed: () async {
-                  if (adb == null) return;
-                  final out = await adb!.run(
+                  final out = await adb.run(
                     "wm density | grep 'Physical' | awk '{print \$3 }'",
                   );
                   setState(() {
                     _currentDensity = int.parse(out);
                   });
-                  await adb!.run("wm density reset -d $_selectedDisplay");
+                  await adb.run("wm density reset -d $_selectedDisplay");
                 },
                 child: const Text('Reset ZOOM'),
               ),

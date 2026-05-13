@@ -1,8 +1,7 @@
-import 'dart:developer';
-
+import 'dart:async';
 import 'package:byd_display_switcher/services/device_service.dart';
-import 'package:device_apps/device_apps.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_device_apps/flutter_device_apps.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
 class OverlayWidget extends StatefulWidget {
@@ -13,18 +12,17 @@ class OverlayWidget extends StatefulWidget {
 
 class _OverlayWidgetState extends State<OverlayWidget> {
   bool _expanded = false;
-  bool _showDisplays = false;
   String packageNameWithService = "";
 
   static const _btnSize = 60.0;
-  static const _panelWidth = 400.0;
-  static const _tileHeight = 60.0;
-  // 3 tiles + 8dp gap between button and panel — same for both panels
-  static const _panelHeight = 600.0;
-
-  SelfAdbService? adb;
-  List<ApplicationWithIcon> _availableApps = const [];
+  static const _panelWidth = 600.0;
+  double _panelHeight = 250.0;
+  List<AppInfo> _availableApps = const [];
+  List<int> displayIds = const [];
   final _scrollController = ScrollController();
+
+  final Map<int, AppInfo> _displayApps = {};
+  final adb = SelfAdbService();
 
   @override
   void dispose() {
@@ -35,31 +33,33 @@ class _OverlayWidgetState extends State<OverlayWidget> {
   @override
   void initState() {
     super.initState();
-    adb = SelfAdbService.instance;
-    adb!.run("ls");
+
+    adb.getDisplays().then(
+      (value) => setState(() {
+        displayIds = value;
+      }),
+    );
   }
 
-  Future<void> _loadApps(String adbOut) async {
-    final packages = adbOut
-        .split('\n')
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toList();
-
-    final results = await Future.wait(
-      packages.map((pkg) => DeviceApps.getApp(pkg, true)),
+  void _moveAppToDisplay(AppInfo app, int displayId) async {
+    final out = await _sendAdbCommand(
+      "dumpsys package ${app.packageName} | grep -A 1 'android.intent.action.MAIN'",
     );
+    final activity = extractActivity(out);
+    if (activity != null) {
+      await _sendAdbCommand("am start --display $displayId -n $activity");
+    }
+  }
 
-    setState(() {
-      _availableApps = results.whereType<ApplicationWithIcon>().toList();
-    });
+  String? extractActivity(String raw) {
+    final match = RegExp(r'[\w.]+\/[\w.]+').firstMatch(raw);
+    return match?.group(0);
   }
 
   Future<void> _toggleOverlay() async {
     if (_expanded) {
       setState(() {
         _expanded = false;
-        _showDisplays = false;
       });
       await FlutterOverlayWindow.resizeOverlay(
         _btnSize.toInt(),
@@ -67,6 +67,12 @@ class _OverlayWidgetState extends State<OverlayWidget> {
         true,
       );
     } else {
+      await adb.getRunningApps().then(
+        (value) => setState(() {
+          _availableApps = value;
+          _panelHeight = value.length <= 4 ? 480 : 630;
+        }),
+      );
       await FlutterOverlayWindow.resizeOverlay(
         _panelWidth.toInt(),
         _panelHeight.toInt(),
@@ -76,43 +82,28 @@ class _OverlayWidgetState extends State<OverlayWidget> {
     }
   }
 
-  Future<void> _getRunningApps() async {
-    final out = await adb!.run(
-      "ps -A | grep u[0-9999]_a | awk '{print \$NF}' | sort -u | while read p; do dumpsys package \$p 2>/dev/null | grep -q 'android.intent.category.LAUNCHER' && echo \$p; done",
-    );
-    await _loadApps(out);
-    await _toggleOverlay();
+  Future<String> _sendAdbCommand(String command) async {
+    return await adb.run(command);
   }
 
   @override
   Widget build(BuildContext context) {
+    final overlaySize = MediaQuery.of(context).size;
     return Material(
       color: Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           GestureDetector(
-            onTap: () async {
-              if (_expanded) {
-                await _toggleOverlay();
-              } else {
-                await _getRunningApps();
-              }
-            },
+            onTap: _toggleOverlay,
             child: Container(
               width: _btnSize,
               height: _btnSize,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: Colors.teal,
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black38,
-                    blurRadius: 6,
-                    offset: Offset(0, 3),
-                  ),
-                ],
               ),
               child: Icon(
                 _expanded ? Icons.close : Icons.display_settings,
@@ -123,7 +114,6 @@ class _OverlayWidgetState extends State<OverlayWidget> {
           ),
           if (_expanded)
             Container(
-              width: _panelWidth,
               margin: const EdgeInsets.only(top: 0),
               decoration: BoxDecoration(
                 color: Colors.grey[900],
@@ -132,146 +122,118 @@ class _OverlayWidgetState extends State<OverlayWidget> {
                   BoxShadow(color: Colors.black45, blurRadius: 8),
                 ],
               ),
-              child: _showDisplays
-                  ? Column(
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  spacing: 24,
+                  children: [
+                    Row(
                       mainAxisSize: MainAxisSize.min,
-                      children: _displayTiles(),
-                    )
-                  : GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onVerticalDragUpdate: (d) {
-                        final offset = (_scrollController.offset - d.delta.dy)
-                            .clamp(
-                              0.0,
-                              _scrollController.position.maxScrollExtent,
-                            );
-                        _scrollController.jumpTo(offset);
-                      },
-                      child: SizedBox(
-                        height: _panelHeight,
-                        child: SingleChildScrollView(
-                          controller: _scrollController,
-                          physics: const NeverScrollableScrollPhysics(),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: _appTiles(_availableApps),
-                          ),
-                        ),
+                      spacing: 12,
+                      children: List.generate(displayIds.length, (index) {
+                        return _displays(overlaySize, displayIds[index]);
+                      }),
+                    ),
+                    SizedBox(
+                      width: overlaySize.width,
+                      height: _availableApps.length <= 4 ? 150 : 300,
+                      child: GridView(
+                        shrinkWrap: true,
+                        physics: _availableApps.length <= 8
+                            ? NeverScrollableScrollPhysics()
+                            : BouncingScrollPhysics(),
+                        padding: const EdgeInsets.all(0),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 4,
+                              childAspectRatio: 1,
+                            ),
+                        children: List.generate(_availableApps.length, (index) {
+                          return _appTile(_availableApps[index], overlaySize);
+                        }),
                       ),
                     ),
+                  ],
+                ),
+              ),
             ),
         ],
       ),
     );
   }
 
-  List<Widget> _displayTiles() => [
-    _displayTile('Driver\'s Display', Icons.looks_one_rounded, 5),
-    const Divider(color: Colors.white12, height: 1),
-    _displayTile('Main Display', Icons.looks_two_rounded, 0),
-    const Divider(color: Colors.white12, height: 1),
-    _displayTile('Passenger\'s Display', Icons.looks_3_rounded, 2),
-  ];
-
-  String? extractActivity(String raw) {
-    final match = RegExp(r'[\w.]+\/[\w.]+').firstMatch(raw);
-    return match?.group(0);
-  }
-
-  Widget _displayTile(String label, IconData icon, int displayId) {
-    return GestureDetector(
-      onTap: () async {
-        log(packageNameWithService);
-        if (adb != null) {
-          final out = await adb!.run(
-            "dumpsys package $packageNameWithService | grep -A 1 'android.intent.action.MAIN'",
-          );
-          final activity = extractActivity(out);
-          if (activity != null) {
-            final out = await adb!.run(
-              "am start --display $displayId -n $activity",
-            );
-            log(out);
-          }
-        }
-      },
-      child: SizedBox(
-        height: _tileHeight,
-        width: _panelWidth,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              Icon(icon, color: Colors.white70, size: 22),
-              const SizedBox(width: 12),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-            ],
-          ),
+  Widget _appTile(AppInfo app, Size overlaySize) {
+    return LongPressDraggable(
+      delay: Duration(milliseconds: 100),
+      data: app,
+      feedback: Material(
+        color: Colors.transparent,
+        child: Transform.translate(
+          offset: Offset(52, 52),
+          child: Image.memory(app.iconBytes!, width: 52, height: 52),
         ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Image.memory(app.iconBytes!, width: 52, height: 52),
+          Text(
+            app.appName!,
+            style: const TextStyle(color: Colors.white),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }
 
-  // ── App list ──────────────────────────────────────────────────────────────
-
-  List<Widget> _appTiles(List<ApplicationWithIcon> apps) {
-    final tiles = <Widget>[];
-    for (int i = 0; i < apps.length; i++) {
-      tiles.add(_appTile(apps[i]));
-      if (i < apps.length - 1) {
-        tiles.add(const Divider(color: Colors.white12, height: 1));
-      }
-    }
-    return tiles;
-  }
-
-  Widget _appTile(ApplicationWithIcon app) {
-    return GestureDetector(
-      onTap: () {
+  Widget _displays(Size overlaySize, int displayId) {
+    return DragTarget<AppInfo>(
+      onAcceptWithDetails: (details) {
         setState(() {
-          packageNameWithService = app.packageName;
-          _showDisplays = true;
+          _displayApps[displayId] = details.data;
         });
+        _moveAppToDisplay(details.data, displayId);
       },
-      child: SizedBox(
-        height: _tileHeight,
-        width: _panelWidth,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: Image.memory(
-                  app.icon,
-                  width: 24,
-                  height: 24,
-                  fit: BoxFit.contain,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  app.appName,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    decoration: TextDecoration.none,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
+      builder: (context, candidateData, rejectedData) {
+        final hovered = candidateData.isNotEmpty;
+        return Container(
+          height: 230,
+          width: overlaySize.width / 6,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.teal, width: 4),
           ),
-        ),
-      ),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              spacing: 12,
+              children: [
+                if (hovered)
+                  Image.memory(
+                    candidateData[0]!.iconBytes!,
+                    width: 52,
+                    height: 52,
+                  ),
+                if (_displayApps[displayId] != null && !hovered)
+                  Image.memory(
+                    _displayApps[displayId]!.iconBytes!,
+                    width: 52,
+                    height: 52,
+                  ),
+
+                Text(
+                  "Display $displayId",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
