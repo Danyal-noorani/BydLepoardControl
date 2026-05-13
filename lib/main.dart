@@ -103,13 +103,15 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Text("ADB IP: ${adb.wifiIp}", textAlign: TextAlign.center),
             ),
             const SizedBox(height: 25),
-            Center(
-              child: Text(
-                "ADB Error: ${adb.adbError}",
-                textAlign: TextAlign.center,
+            if (adb.adbError != "")
+              Center(
+                child: Text(
+                  "ADB Error: ${adb.adbError}",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.red),
+                ),
               ),
-            ),
-            const SizedBox(height: 25),
+            if (adb.adbError != "") const SizedBox(height: 25),
             Center(child: Text("Change Display Zoom")),
             Center(
               child: DropdownButton<int>(

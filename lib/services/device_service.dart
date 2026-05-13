@@ -21,7 +21,7 @@ class SelfAdbService {
   AdbConnection? _connection;
   bool _adbReady = false;
   final _port = 5555;
-  String adbError = "No Error";
+  String adbError = "";
 
   AdbCrypto? crypto;
 

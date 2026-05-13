@@ -199,37 +199,49 @@ class _OverlayWidgetState extends State<OverlayWidget> {
       },
       builder: (context, candidateData, rejectedData) {
         final hovered = candidateData.isNotEmpty;
-        return Container(
-          height: 230,
-          width: overlaySize.width / 6,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.teal, width: 4),
-          ),
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              spacing: 12,
-              children: [
-                if (hovered)
-                  Image.memory(
-                    candidateData[0]!.iconBytes!,
-                    width: 52,
-                    height: 52,
-                  ),
-                if (_displayApps[displayId] != null && !hovered)
-                  Image.memory(
-                    _displayApps[displayId]!.iconBytes!,
-                    width: 52,
-                    height: 52,
-                  ),
+        return GestureDetector(
+          onDoubleTap: () {
+            if (_displayApps[displayId] != null) {
+              _sendAdbCommand(
+                "am force-stop ${_displayApps[displayId]!.packageName}",
+              );
+              setState(() {
+                _displayApps.remove(displayId);
+              });
+            }
+          },
+          child: Container(
+            height: overlaySize.width / 6,
+            width: overlaySize.width / 6,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.teal, width: 4),
+            ),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                spacing: 12,
+                children: [
+                  if (hovered)
+                    Image.memory(
+                      candidateData[0]!.iconBytes!,
+                      width: 52,
+                      height: 52,
+                    ),
+                  if (_displayApps[displayId] != null && !hovered)
+                    Image.memory(
+                      _displayApps[displayId]!.iconBytes!,
+                      width: 52,
+                      height: 52,
+                    ),
 
-                Text(
-                  "Display $displayId",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white),
-                ),
-              ],
+                  Text(
+                    "Display $displayId",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
             ),
           ),
         );
